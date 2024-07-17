@@ -25,11 +25,11 @@ def np2th(weights, conv=False):
         weights = weights.transpose([3, 2, 0, 1])
     return torch.from_numpy(weights)
 
-def load_pretrained_weights(img_size, model_scale):
+def load_pretrained_weights(img_size, model_scale, pretrained_path):
 
     backbone = maxxvit_rmlp_small_rw_256_4out()
-    print('Loading:', './pretrained_pth/maxvit/maxxvit_rmlp_small_rw_256_sw-37e217ff.pth')
-    state_dict = torch.load('./pretrained_pth/maxvit/maxxvit_rmlp_small_rw_256_sw-37e217ff.pth')
+    print('Loading:', pretrained_path)
+    state_dict = torch.load(pretrained_path)
     #state_dict = torch.load('./pretrained_pth/maxvit/trained_backbone.pth')
     backbone.load_state_dict(state_dict, strict=False)
     print('Pretrained weights loaded.')
@@ -38,7 +38,7 @@ def load_pretrained_weights(img_size, model_scale):
 
 class MIST_CAM(nn.Module):
     def __init__(self, n_class=1, img_size_s1=(256, 256), img_size_s2=(224, 224), model_scale='small',
-                 decoder_aggregation='additive', interpolation='bilinear'):
+                 decoder_aggregation='additive', interpolation='bilinear', pretrained_path='maxxvit_rmlp_small_rw_256_sw-37e217ff.pth'):
         super(MIST_CAM, self).__init__()
 
         self.n_class = n_class
@@ -56,7 +56,7 @@ class MIST_CAM(nn.Module):
         )
 
         # backbone network initialization with pretrained weight
-        self.backbone1 = load_pretrained_weights(self.img_size_s1[0], self.model_scale)
+        self.backbone1 = load_pretrained_weights(self.img_size_s1[0], self.model_scale, pretrained_path)
         #self.backbone2 = load_pretrained_weights(self.img_size_s2[0], self.model_scale)
 
         if (self.model_scale == 'tiny'):

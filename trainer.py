@@ -11,12 +11,13 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from tensorboardX import SummaryWriter
-from torch.nn.modules.loss import CrossEntropyLoss
+from torch.nn.modules.loss import CrossEntropyLoss, BCEWithLogitsLoss
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from torch.cuda.amp import GradScaler, autocast
 
-from utils.dataset_synapse import Synapse_dataset, RandomGenerator
+# from utils.dataset_synapse import Synapse_dataset, RandomGenerator
+from utils.dataset_kpi import KPIsDataset, RandomGenerator
 from utils.utils import powerset
 from utils.utils import one_hot_encoder
 from utils.utils import DiceLoss
@@ -50,9 +51,8 @@ def trainer_synapse(args, model, snapshot_path):
     num_classes = args.num_classes
     batch_size = args.batch_size * args.n_gpu
         
-    db_train = Synapse_dataset(base_dir=args.root_path, list_dir=args.list_dir, split="train", nclass=args.num_classes,
-                               transform=transforms.Compose(
-                                   [RandomGenerator(output_size=[args.img_size, args.img_size])]))
+    db_train = KPIsDataset(root_dir=args.root_path, split='train')
+    db_val = KPIsDataset(root_dir=args.root_path, split='validation')
     print("The length of train set is: {}".format(len(db_train)))
 
     def worker_init_fn(worker_id):
@@ -60,10 +60,12 @@ def trainer_synapse(args, model, snapshot_path):
 
     trainloader = DataLoader(db_train, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True,
                              worker_init_fn=worker_init_fn)
+    valloader = DataLoader(db_val, batch_size=batch_size, shuffle=False, num_workers=8, pin_memory=True,
+                             worker_init_fn=worker_init_fn)
     if args.n_gpu > 1:
         model = nn.DataParallel(model)
     model.train()
-    ce_loss = CrossEntropyLoss()
+    ce_loss = CrossEntropyLoss() if args.num_classes > 1 else BCEWithLogitsLoss()
     dice_loss = DiceLoss(num_classes)
 
     #optimizer = optim.SGD(model.parameters(), lr=base_lr, momentum=0.9, weight_decay=0.0001)
@@ -81,27 +83,33 @@ def trainer_synapse(args, model, snapshot_path):
     #ss = [[0],[1],[2],[3]]
     print(ss)
     for epoch_num in range(args.max_epochs):
-        
+        model.train()
+        train_loss = 0.
+
         for i_batch, sampled_batch in enumerate(trainloader):
             image_batch, label_batch = sampled_batch['image'], sampled_batch['label']
-            image_batch, label_batch = image_batch.cuda(), label_batch.squeeze(1).cuda()
+            image_batch, label_batch = image_batch.cuda(), label_batch.cuda()
             
-            P = model(image_batch)            
+            outputs = model(image_batch)
+            loss_ce = ce_loss(outputs, label_batch)
+            loss_dice = dice_loss(outputs, label_batch.squeeze(1), softmax=True)
+            loss = 0.5 * loss_ce + 0.5 * loss_dice
+            train_loss += loss.item()        
            
-            loss = 0.0
-            lc1, lc2 = 0.3, 0.7 #0.3, 0.7
-            #print(label_batch.shape)
+            # loss = 0.0
+            # lc1, lc2 = 0.3, 0.7 #0.3, 0.7
+            # #print(label_batch.shape)
           
-            for s in ss:
-                iout = 0.0
-                #print(s)
-                if(s==[]):
-                    continue
-                for idx in range(len(s)):
-                    iout += P[s[idx]]
-                loss_ce = ce_loss(iout, label_batch[:].long())
-                loss_dice = dice_loss(iout, label_batch, softmax=True)
-                loss += (lc1 * loss_ce + lc2 * loss_dice)
+            # for s in ss:
+            #     iout = 0.0
+            #     #print(s)
+            #     if(s==[]):
+            #         continue
+            #     for idx in range(len(s)):
+            #         iout += P[s[idx]]
+            #     loss_ce = ce_loss(iout, label_batch[:].long())
+            #     loss_dice = dice_loss(iout, label_batch, softmax=True)
+            #     loss += (lc1 * loss_ce + lc2 * loss_dice)
            
             optimizer.zero_grad()
             loss.backward()
@@ -119,7 +127,20 @@ def trainer_synapse(args, model, snapshot_path):
             if iter_num % 50 == 0:
                 logging.info('iteration %d, epoch %d : loss : %f, lr: %f' % (iter_num, epoch_num, loss.item(), lr_))                
              
-        logging.info('iteration %d, epoch %d : loss : %f, lr: %f' % (iter_num, epoch_num, loss.item(), lr_))        
+        with torch.no_grad():
+            model.eval()
+            val_loss = 0.
+            for i_batch, sampled_batch in enumerate(valloader):
+                image_batch, label_batch = sampled_batch['image'], sampled_batch['label']
+                image_batch, label_batch = image_batch.cuda(), label_batch.cuda()
+                outputs = model(image_batch)
+                loss_ce = ce_loss(outputs, label_batch)
+                loss_dice = dice_loss(outputs, label_batch.squeeze(1), softmax=True)
+                loss = 0.5 * loss_ce + 0.5 * loss_dice
+                val_loss += loss.item()
+        val_loss /= len(valloader)
+        train_loss /= len(trainloader)
+        logging.info(f'epoch {epoch_num} completed with {val_loss=}, {train_loss=}')   
        
         #save_mode_path = os.path.join(snapshot_path, 'last.pth')
         #torch.save(model.state_dict(), save_mode_path)
