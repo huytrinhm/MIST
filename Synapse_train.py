@@ -67,7 +67,7 @@ if __name__ == "__main__":
         os.makedirs(args.snapshot_path)
     
     # img_size_s2 has no effect :)
-    net = MIST_CAM(n_class=args.num_classes, img_size_s1=(args.img_size,args.img_size), img_size_s2=(224,224), model_scale='small', decoder_aggregation='additive', interpolation='bilinear', args.pretrained_path).cuda()
+    net = MIST_CAM(n_class=args.num_classes, img_size_s1=(args.img_size,args.img_size), img_size_s2=(224,224), model_scale='small', decoder_aggregation='additive', interpolation='bilinear', pretrained_path=args.pretrained_path).cuda()
 
     
     print('Model %s created, param count: %d' %
