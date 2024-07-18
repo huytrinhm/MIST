@@ -65,7 +65,8 @@ def inference(args, model):
     for sample in testloader:
         batch_imgs, batch_names = sample['image'], sample['case_name']
         batch_imgs = batch_imgs.cuda()
-        outputs = model(batch_imgs)
+        p1, p2, p3, p4 = model(batch_imgs)
+        outputs = p1 + p2 + p3 + p4
         outputs = torch.sigmoid(outputs)
         for name, im in zip(batch_names, outputs):
             save_name = os.path.join(args.save_path, name.split('/')[-1]) + '.pt'
