@@ -95,3 +95,4 @@ if __name__ == "__main__":
 
     net = net.cuda()
     net.load_state_dict(torch.load(args.snapshot_path))
+    inference(args, net)
