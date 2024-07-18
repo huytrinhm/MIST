@@ -77,3 +77,25 @@ class KPIsDataset(Dataset):
         
         sample['case_name'] = self.image_paths[idx]
         return sample
+
+class KPIsTestDataset(Dataset):
+    def __init__(self, root_dir, image_transform=None):
+        self.image_transform = image_transform
+
+        image_filenames = [filename for filename in os.listdir(root_dir) if filename.endswith('.pt')]
+
+        self.image_paths = [os.path.join(root_dir, filename) for filename in image_filenames]
+
+    def __len__(self):
+        return len(self.image_paths)
+
+    def __getitem__(self, idx):
+        image = torch.load(self.image_paths[idx])
+
+        if self.image_transform:
+            image = self.image_transform(image)
+
+        sample = {'image': image}
+        
+        sample['case_name'] = self.image_paths[idx]
+        return sample
